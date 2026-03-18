@@ -1,0 +1,84 @@
+=== `rpicam-source`
+
+`rpicam-source` is a camera capture application that extends the design of `rpicam-vid` by integrating an HTTP server. This allows remote clients to control video capture via REST-like endpoints while the camera is in operation. This application not only encodes video but also provides mechanisms for external clients to start or stop capture and retrieve runtime information.
+
+==== Key Features
+
+* **HTTP Control:**  
+  Before entering its main event loop, `rpicam-source` starts an HTTP server (hardcoded to listen on port 8080) that exposes several endpoints:
+  - **`/start`:** When the application is in the `IDLE` state, an HTTP POST to this endpoint sets a flag to initiate capture.
+  - **`/stop`:** When capture is underway (state `CAPTURE`), posting to this endpoint sets a flag to stop recording.
+  - **`/video_name`:** Returns the current video filename (generated using a timestamp) so that clients can know what file is being written.
+  - **`/status`:** Provides the current internal state of the application (one of `CONFIGURE`, `IDLE`, `CAPTURE`, or `SAVE`) in JSON format.
+
+* **State Transitions:**  
+  The application manages its operation through several states:
+  - **CONFIGURE:** The initial state where the camera and encoder are configured.
+  - **IDLE:** Waiting for the `/start` command.
+  - **CAPTURE:** Once capture has been initiated, the application streams `CompletedRequest` objects (which contain image frames and metadata) to both the encoder and the preview.
+  - **SAVE:** Upon a timeout, hitting a frame count limit, or a `/stop` request, the application transitions to save the recording by stopping both the camera and encoder and then resets back to `IDLE`.
+
+* **Video Encoding and Output:**  
+  Similar to `rpicam-vid`, `rpicam-source` sets up the encoder with an output callback that sends encoded buffers to an `Output` object. This object writes the encoded data to disk, creating two types of output files:
+  - A video file with the `.h264` extension.
+  - A metadata file in JSON format with the `.json` extension.
+  
+Both files have filenames generated based on the current timestamp to ensure uniqueness. The root paths for these files are hardcoded in the source. For example, in the code the video file is saved under `/home/pi/videos/` and the metadata file under `/home/pi/metadata/`:
+  
+[source,cpp]
+----
+options->output = "/home/pi/videos/" + vid_filename + ".h264";
+options->metadata = "/home/pi/metadata/" + vid_filename + ".json";
+----
+
+==== Sample Command
+
+The following command starts `rpicam-source` with a specific configuration:
+  
+[source,console]
+----
+$ rpicam-source --level 4.2 --framerate 30 --width 1280 --height 720 -t 60000s --denoise cdn_off -n
+----
+
+In this sample:
+* The `--level 4.2` option sets the H.264 target level.  
+* The `--framerate 30` option configures the video capture rate.  
+* The `--width 1280 --height 720` options set the resolution.  
+* The `-t 60000s` specifies the capture timeout (here an unusually long duration for demonstration).  
+* The `--denoise cdn_off` disables the colour denoise process.  
+* The `-n` disables the preview window (or any non-essential display) to free CPU cycles.
+
+==== Assumptions and Hardcoded Variables
+
+* **HTTP Server Port:**  
+  The HTTP server listens on port **8080**, which is hardcoded in the source. This is used for the `/start`, `/stop`, `/video_name`, and `/status` endpoints.
+
+* **Timeouts:**  
+  In the capture loop, the application checks for timeout conditions based on the elapsed time from the start of capture. Although the timeout duration is configurable via the `-t` option, the code in the application’s event loop relies on defaults provided by the `VideoOptions` structure.
+
+* **Filename Generation and Output Paths:**  
+  Filenames for the output files are generated using the current date and time down to microsecond precision to ensure uniqueness. The resulting video file (`.h264`) and metadata file (`.json`) are saved under hardcoded root paths:
+  - Video: `/home/pi/videos/`
+  - Metadata: `/home/pi/metadata/`
+
+* **State Variables:**  
+  The internal state is maintained using an atomic `CameraState` (with values `CONFIGURE`, `IDLE`, `CAPTURE`, and `SAVE`), and flags such as `start_capture` and `stop_capture` control the transition between these states.
+
+==== Operation Flow Summary
+
+1. **Initialization:**  
+   The camera is opened and configured, and the state is set to `IDLE`. The HTTP server is started, exposing its control endpoints on port 8080.
+
+2. **Capture Start:**  
+   A client sends an HTTP POST to `/start`. The server verifies that the system is `IDLE`, sets a flag to start capture, and responds with a confirmation JSON payload.
+
+3. **Configuration and Capture:**  
+   The application transitions to `CONFIGURE`, generates a unique video output filename, sets up the encoder (with callbacks for output and metadata), and then starts the camera. The state changes to `CAPTURE` and the main event loop begins processing frames.
+
+4. **Frame Handling:**  
+   Each received `CompletedRequest` is processed by both the encoder and preview module. All references to a completed frame are maintained until processing (encoding, display) is finished to ensure proper buffer recycling.
+
+5. **Stopping Capture:**  
+   Capture ends when a timeout is reached, a specified frame count is processed, or a client sends a POST to `/stop`. The application temporarily sets the state to `SAVE`, stops both camera and encoder, then resets back to `IDLE`.
+
+This detailed overview of [`rpicam-source`](apps/rpicam_source.cpp) illustrates how external HTTP control, state management, video processing, and output file generation are integrated into the application.

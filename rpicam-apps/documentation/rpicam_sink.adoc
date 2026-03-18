@@ -1,0 +1,98 @@
+=== `rpicam-sink`
+
+`rpicam-sink` is designed to complement `rpicam-source` by receiving and processing video frames streamed over the network. Its architecture is similar to other `rpicam` applications but incorporates additional synchronization and timeout features to ensure reliable stream handling.
+
+==== Key Features
+
+* **Stream Reception and Synchronization:**  
+  At startup, `rpicam-sink` waits for the first `CompletedRequest` (a packet containing image frames and metadata) from `rpicam-source` before beginning full processing. This initial wait ensures a valid stream is present.
+
+* **Event Loop & Configurable Timed Wait:**  
+  After the first frame is received, the application configures the encoder with an output callback and enters the `CAPTURE` state. The event loop then continuously processes incoming frames. After handling each frame, the `TimedWait()` function is called with a user-specified timeout value (using the new configurable parameter). If no new frame is received within the provided interval, the sink deduces that the source has stopped streaming and transitions back to the `IDLE` state.
+
+For example, the updated `TimedWait()` function is defined as follows:
+
+[source,cpp]
+----
+std::optional<T> TimedWait(std::chrono::seconds timeout)
+{
+    std::unique_lock<std::mutex> lock(mutex_);
+    if (!cond_.wait_for(lock, timeout, [this] { return !queue_.empty(); }))
+        return std::nullopt;
+  
+    T msg = std::move(queue_.front());
+    queue_.pop();
+    return msg;
+}
+----
+  
+This change gives users the flexibility to adjust the timeout period based on network conditions or processing demands by passing in a custom value.
+
+* **Encoder Integration:**  
+  Similar to `rpicam-vid`, `rpicam-sink` employs an encoder callback to process the incoming encoded data. This mechanism ensures that video buffers remain in use until the processing (e.g., encoding or previewing) completes, thereby preventing premature buffer recycling.
+
+* **Output Files Creation:**  
+  The encoder’s output callback writes the processed video data to the disk, generating two output files:
+  - A video file with a `.h264` extension.
+  - A metadata file in JSON format (`.json`).
+
+Filenames are generated using the current timestamp to ensure uniqueness. The files are stored under hardcoded root paths:
+  * Video files: `/home/pi/videos/`
+  * Metadata files: `/home/pi/metadata/`
+
+For example:
+
+[source,cpp]
+----
+options->output = "/home/pi/videos/" + vid_filename + ".h264";
+options->metadata = "/home/pi/metadata/" + vid_filename + ".json";
+----
+
+==== Sample Command
+
+The following command launches `rpicam-sink` with a specified configuration:
+
+[source,console]
+----
+$ rpicam-sink --level 4.2 --framerate 30 --width 1280 --height 720 -t 60000s --denoise cdn_off -n
+----
+
+In this sample:
+* `--level 4.2` sets the H.264 target level.
+* `--framerate 30` configures the expected incoming frame rate.
+* `--width 1280 --height 720` sets the resolution for processing.
+* `-t 60000s` specifies an extended capture timeout for demonstration.
+* `--denoise cdn_off` disables the colour denoise process.
+* `-n` disables the preview window to conserve CPU resources.
+
+==== Assumptions and Hardcoded Variables
+
+* **HTTP Server Port Dependency:**  
+  Although `rpicam-sink` does not run its own HTTP server, it relies on `rpicam-source`—which listens on port **8080**—for control commands. This port is hardcoded in the source of `rpicam-source` and is integral to network synchronization.
+
+* **TimedWait() Timeout Configuration:**  
+  The event loop in `rpicam-sink` uses the updated `TimedWait()` function to detect gaps between frames. Rather than using a fixed timeout, users can now pass a custom timeout value (as shown above) when invoking the function.
+
+* **Filename Generation and Output Paths:**  
+  The output video file (with `.h264`) and metadata file (with `.json`) are generated using the current timestamp. Their root paths are hardcoded to:
+  - Video: `/home/pi/videos/`
+  - Metadata: `/home/pi/metadata/`
+
+* **State Variables:**  
+  Internal state is managed using atomic state flags (e.g., `CONFIGURE`, `IDLE`, `CAPTURE`, `SAVE`), with control flags (such as `start_capture` and `stop_capture`) regulating transitions between different operation phases.
+
+==== Operation Flow Summary
+
+1. **Initialization & Synchronization:**  
+   `rpicam-sink` starts in a waiting state until it receives the first `CompletedRequest` from `rpicam-source`, ensuring that the incoming stream is valid.
+
+2. **Entering Capture Mode:**  
+   Upon receiving the initial frame, the application configures its encoder, sets an output callback, and transitions to the `CAPTURE` state, after which the event loop continuously processes incoming frames.
+
+3. **Timeout Detection:**  
+   After processing each frame, the updated `TimedWait()` function is called with a user-specified timeout. If no new frames arrive within the set interval, the sink assumes the stream has ended and reverts to the `IDLE` state.
+
+4. **Buffer Management:**  
+   The application retains references to `CompletedRequest` objects until the encoder and preview processes complete, ensuring proper buffer recycling.
+
+This updated overview of [`rpicam-sink`](apps/rpicam_sink.cpp) demonstrates how user-configurable timeouts, along with synchronization, state management, and output file creation, work together to reliably process video streams received from `rpicam-source`.
