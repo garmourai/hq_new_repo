@@ -44,8 +44,8 @@ STOP_LOGGING="/home/pi/source_code/.tmux/plugins/tmux-logging/scripts/stop_loggi
 LOCAL_COMMAND3="source /home/pi/3d_vision/bin/activate && python $SCRIPT_DIR/upload_files.py"
 LOCAL_COMMAND4="python3 $SCRIPT_DIR/packet_buffer_to_hls.py"
 
-LOCAL_COMMAND1="rpicam-source  --tuning-file /home/pi/source_code/imx477_new_arducam_160.json   --width 1440 --height 1080 --ev 1 --brightness 0.05 --saturation 1.3 \
-    -t 60000s --denoise cdn_off -n --bitrate 4000000"
+LOCAL_COMMAND1="rpicam-source  --tuning-file /home/pi/source_code/imx477_new_arducam_160.json   --width 2080 --height 1080 --ev 1 --brightness 0.05 --saturation 1.3 \
+    -t 60000s --denoise cdn_off -n --bitrate 8000000"
 echo "Using fixed settings with custom tuning file"
 echo "Camera command: $LOCAL_COMMAND1"
 
