@@ -6,6 +6,7 @@ python3 /home/pi/source_code/ensure_dirs.py
 SESSION_NAME1="server"
 SESSION_NAME2="testing"
 SESSION_NAME3="upload"
+SESSION_NAME5="livestreamcreator"
 
 # Logging scripts
 START_LOGGING="/home/pi/.tmux/plugins/tmux-logging/scripts/start_logging.sh"
@@ -35,7 +36,7 @@ EOF
 )
 
 # Kill existing tmux sessions if they exist
-for SESSION in "$SESSION_NAME1" "$SESSION_NAME2" "$SESSION_NAME3"; do
+for SESSION in "$SESSION_NAME1" "$SESSION_NAME2" "$SESSION_NAME3" "$SESSION_NAME5"; do
     tmux has-session -t $SESSION 2>/dev/null
     if [ $? -eq 0 ]; then
         echo "Deleting existing tmux session: $SESSION"

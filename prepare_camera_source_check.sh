@@ -35,6 +35,7 @@ done
 SESSION_NAME1="server"
 SESSION_NAME3="upload"
 SESSION_NAME4="hls"
+SESSION_NAME5="livestreamcreator"
 
 # Logging scripts
 START_LOGGING="/home/pi/source_code/.tmux/plugins/tmux-logging/scripts/start_logging.sh"
@@ -43,6 +44,7 @@ STOP_LOGGING="/home/pi/source_code/.tmux/plugins/tmux-logging/scripts/stop_loggi
 # Camera detection will be done after tmux sessions are killed
 LOCAL_COMMAND3="source /home/pi/3d_vision/bin/activate && python $SCRIPT_DIR/upload_files.py"
 LOCAL_COMMAND4="python3 $SCRIPT_DIR/packet_buffer_to_hls.py"
+LOCAL_COMMAND5="python3 $SCRIPT_DIR/create_circular_m3u8_and_create_stream.py"
 
 LOCAL_COMMAND1="rpicam-source  --tuning-file /home/pi/source_code/imx477_new_arducam_160.json   --width 2080 --height 1080 --ev 1 --brightness 0.05 --saturation 1.3 \
     -t 60000s --denoise cdn_off -n --bitrate 8000000"
@@ -50,7 +52,7 @@ echo "Using fixed settings with custom tuning file"
 echo "Camera command: $LOCAL_COMMAND1"
 
 # Kill existing tmux sessions if they exist (server, upload, hls)
-for SESSION in "$SESSION_NAME1" "$SESSION_NAME3" "$SESSION_NAME4"; do
+for SESSION in "$SESSION_NAME1" "$SESSION_NAME3" "$SESSION_NAME4" "$SESSION_NAME5"; do
     tmux has-session -t $SESSION 2>/dev/null
     if [ $? -eq 0 ]; then
         echo "Deleting existing tmux session: $SESSION"
@@ -80,6 +82,13 @@ tmux new-session -d -s $SESSION_NAME4
 tmux send-keys -t $SESSION_NAME4 "$START_LOGGING" Enter
 echo "Running command in tmux: $LOCAL_COMMAND4"
 tmux send-keys -t $SESSION_NAME4 "$LOCAL_COMMAND4" C-m
+
+# Create and start tmux session for livestreamcreator (runs continuously across tracks)
+echo "Creating new tmux session: $SESSION_NAME5"
+tmux new-session -d -s $SESSION_NAME5
+tmux send-keys -t $SESSION_NAME5 "$START_LOGGING" Enter
+echo "Running command in tmux: $LOCAL_COMMAND5"
+tmux send-keys -t $SESSION_NAME5 "$LOCAL_COMMAND5" C-m
 
 echo "All done!"
 
